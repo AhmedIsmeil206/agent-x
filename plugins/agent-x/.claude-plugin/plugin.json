@@ -1,4 +1,4 @@
-{ "name": "agent-x", "version": "2.2.0",
+{ "name": "agent-x", "version": "2.3.0",
   "description": "Gated multi-agent engineering engine for any stack and language: Jira/spec intake, PM discovery, tickets, TDD, staff QA with bug tickets, root-cause fixes, reviews, audits, PR and merge after approval.",
   "author": { "name": "Ismail" },
   "keywords": ["agents","orchestration","migration","qa","tickets","jira","review"] }

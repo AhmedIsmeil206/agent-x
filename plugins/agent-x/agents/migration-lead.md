@@ -14,6 +14,8 @@ original in `references/migration/examples/forasna/` (paths passed to you as abs
 
 Per dispatch the orchestrator names one action:
 
+- **extract** (migration budget default): scope + cases + inventory (as source-analyzer would, same read scope)
+  + inventory-audit + seeded mapping, in one pass and one report; long tables go to files.
 - **scope**: confirm `legacy_source.path` exists under `Migration.legacy_path`; hash the files in it
   (`legacy_sha256`); list shared includes/modules it references outside the scope.
 - **cases**: detect patterns P1–P9 (track.md signal table; forasna preset: cases 1–6 per its intake STEP D) from signals

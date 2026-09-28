@@ -25,6 +25,13 @@ old navigation → new), backend (monolith → service, framework A → B, REST 
 UI in a migration is built with the target project's design system (`../design-system.md`); legacy styles are
 mapped to its components and tokens, never copied.
 
+## Token plan for migrations (rigor unchanged, fewer tokens)
+Migrations use the **migration budget** in `../token-budget.md` §2b: one extraction pass (source-analyzer and
+migration-lead `scope`+`cases`+`inventory-audit`+`mapping` merged into a single migration-lead dispatch), a
+graphify index scoped to the legacy path, scripted style diffs (`setup/style-diff.mjs`) so visual-verifier only
+interprets mismatches, one discovery round limited to intentional changes, per-section ticket batching, and
+security/a11y/integration once at the end. The four ≥98% axes, the mapping and the gates are the same.
+
 ## Intake (in addition to ../intake.md)
 legacy repo/path (verified) · legacy route/screen/endpoint · target placement · design source (mandatory for UI:
 Figma or the live legacy app) · parity baseline (faithful port vs approved redesign) · cutover mechanism

@@ -35,6 +35,26 @@ Git beyond commit (branch, push, PR, CI, review, merge, revert) stays with `git-
 - Expected lean dispatches: quick fix ≈ 1–2 · S bug ≈ 2 (root cause + verifier; 1 if trivially explained) ·
   M feature (4 tickets) ≈ 9–12.
 
+## 2b. Migration budget (default for migrations; `thorough` still available)
+1. **One extraction dispatch**: migration-lead action `extract` does scope + patterns + inventory + inventory-audit +
+   seeded MAPPING.md in one pass (it has the same read scope as source-analyzer); source-analyzer runs separately
+   only for legacy scopes > 40 files.
+2. **graphify first**: build or update an index over `legacy_source.path` once; every later legacy question is a
+   graph query plus ranged reads.
+3. **Design capture once**: design-fetcher captures the source once per breakpoint; later phases reuse the
+   capture file, never re-render the source.
+4. **Scripted fidelity**: the orchestrator runs `node <AGENTX_HOME>/setup/style-diff.mjs <sourceUrl> <buildUrl>
+   <selectors> [widths]` (Playwright); visual-verifier gets only the score and mismatches to judge and to check
+   states the script can't reach (hover, open menus). No Playwright → visual-verifier renders as before.
+5. **Discovery**: behavior comes from the legacy code, so product-analyst runs one round, only about intentional
+   changes (redesign, dropped or new behavior). Faithful ports with no changes skip it.
+6. **Tickets by page section** (shell, header, filters, list, detail…), S/M sections batched; per ticket:
+   implementer → code-reviewer ∥ qa execute on sonnet (verifier pass for S sections) → style-diff; mapping evidence
+   filled by the same dispatches.
+7. **Final checks once**: security ∥ a11y ∥ integration (with parity checks per mapping row) at the end, not per ticket.
+Expected: one page ≈ 16–24 dispatches, 0.6M–1.4M tokens (was 30–45, 1.3M–3M). Shared shell (P1) runs once per app
+and is then reused, so later pages are cheaper still.
+
 ## 2. balanced: dispatch plan per ticket
 | Band | balanced (default until 2.2 called "lean") | balanced + | thorough |
 |---|---|---|---|
@@ -68,5 +88,5 @@ verifier → commit (≈1–2 dispatches); balanced → root-cause-analyst → i
 summary reach the model (last 60 lines of failures). Opt out per repo with `Filter: off` in project.md.
 
 ## 6. Expected dispatches (for the PLAN GATE estimate)
-lean: quick ≈ 1–2 · S bug ≈ 2 · M feature (4 tickets) ≈ 9–12 · L (8 tickets) ≈ 30–45 (L tickets never go solo).
-balanced: quick ≈ 3 · M ≈ 14–18 · L ≈ 35–50. thorough ≈ 2× balanced. Migrations use at least balanced.
+migration (per page, 2b) ≈ 16–24 · lean: quick ≈ 1–2 · S bug ≈ 2 · M feature (4 tickets) ≈ 9–12 · L (8 tickets) ≈ 30–45 (L tickets never go solo).
+balanced: quick ≈ 3 · M ≈ 14–18 · L ≈ 35–50. thorough ≈ 2× balanced. Migrations use the migration budget (2b) unless the user picks thorough.
