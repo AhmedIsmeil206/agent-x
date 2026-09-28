@@ -42,6 +42,12 @@
 - Any language: profiles/languages.md toolchain map; generic profile covers every language; lint hook formats
   Go, Rust, Kotlin, Swift, Dart, Ruby, PHP, Elixir, C#, C/C++, Scala besides JS/TS and Python.
 
+## 2.2.0 — 2026-09-28
+- lean is now solo + batching: the orchestrator implements S tickets itself with one independent haiku/sonnet
+  verifier; S tickets in the same area are batched; planner writes CONTEXT-PACK.md for all later dispatches.
+  The previous lean plan is now `balanced`.
+- build-plugin.sh rebuilds in place and keeps the folder's .git history.
+
 ## 2.1.0 — 2026-09-28
 - Intake field 0b: "new spec/feature or a bug in existing code?" always asked; bug track with repro fields,
   root cause first, bisect from last known good, single fix ticket, regression test first (~3 dispatches lean).

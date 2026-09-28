@@ -13,6 +13,8 @@ Rules:
 - Map EVERY functionality-inventory item to a phase or an acceptance check; state counts (in / mapped).
   Never drop, merge away or sample items. Only a human waiver removes one.
 - Shared modules this run owns get their own phase, sequenced before their consumers.
+- Write `CONTEXT-PACK.md` (≤600 words: files with line ranges, patterns to copy, decisions, exact commands) so later
+  dispatches don't re-discover. Group S tickets in the same area into batches (token-budget.md §2a).
 - Output **tickets**, not only phases: one `T-<NNN>` file per tracer-bullet ticket in the format of
   `references/tickets.md` (end-to-end behavior, blocking edges, ACs, seams, size S/M/L that fits one fresh
   context, inventory ids, planned files). Phases group tickets; the board is built from the tickets.

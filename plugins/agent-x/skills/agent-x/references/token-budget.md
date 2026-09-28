@@ -2,6 +2,7 @@
 
 Owner of: budget profiles, which steps run without a model, report size, dispatch batching.
 Set per project (`Budget: lean | balanced | thorough` in project.md, default **lean**), overridable at intake.
+**lean** = solo + batching (§2a); **balanced** = the previous lean plan (§2); **thorough** = full loops.
 Migrations and XL work use at least **balanced**; the user can pick thorough.
 
 ## 1. No model for mechanical steps (the orchestrator runs `setup/ax.mjs` directly, no dispatch)
@@ -16,8 +17,26 @@ Migrations and XL work use at least **balanced**; the user can pick thorough.
 | run-state, LOG.md, lessons.md lines, follow-ups | orchestrator writes them directly (doc-writer only for CONTEXT/ADR drafting in thorough) |
 Git beyond commit (branch, push, PR, CI, review, merge, revert) stays with `git-manager`.
 
-## 2. Dispatch plan per ticket
-| Band | lean | balanced | thorough |
+## 2a. lean: solo mode and batching
+- **Solo for S tickets and S bugs**: the orchestrator itself is the implementer for that ticket (it is still the
+  only writer; no implementer dispatch). It follows implementer.md's rules exactly: project-first, design system,
+  test-first at the agreed seam, no git beyond `ax commit`. Then it runs the project's test/lint/typecheck commands
+  directly (filtered by the output hook) and dispatches **one** independent reviewer:
+  `qa-tester` action `verifier` on **haiku** for pure-logic tickets with green tests and no UI/contract/security
+  surface, else on sonnet. The reviewer never sees the orchestrator's reasoning, only the diff, ACs and tests.
+- Solo is never used for: M/L/XL tickets, C2 work (auth, payments, PII, data migration, security fixes),
+  migrations, UI with a design fidelity target, or a bug whose root cause isn't explained in one line (those go
+  through root-cause-analyst first; the fix may then be solo if the ticket is S).
+- **Batching**: S tickets in the same area (same package and folder, no blocking edges between them) are built in
+  one pass (solo, or one implementer dispatch if they're C1 M) and verified in one verifier dispatch; each keeps
+  its own ticket, TCs and `ax commit`.
+- **Planner hand-off**: the planner writes `runs/<id>/CONTEXT-PACK.md` (≤600 words: relevant files with line
+  ranges, patterns to copy, decisions, commands). Every later dispatch gets that file instead of re-discovering.
+- Expected lean dispatches: quick fix ≈ 1–2 · S bug ≈ 2 (root cause + verifier; 1 if trivially explained) ·
+  M feature (4 tickets) ≈ 9–12.
+
+## 2. balanced: dispatch plan per ticket
+| Band | balanced (default until 2.2 called "lean") | balanced + | thorough |
 |---|---|---|---|
 | S | implementer (writes tests from the ACs, TDD) → **verifier pass**: one qa-tester dispatch that runs tests, drives the change and does a spec+standards review (sonnet) | same + code-reviewer separate if the ticket touches a contract | full per-ticket loop |
 | M | qa test-plans batched for all M tickets in ONE dispatch after the PLAN GATE → implementer → code-reviewer ∥ qa execute (sonnet) | + visual-verifier for UI with design | full |
@@ -25,7 +44,8 @@ Git beyond commit (branch, push, PR, CI, review, merge, revert) stays with `git-
 Bugs always go through root-cause-analyst, but a trivial, fully explained failure (the error names file and cause)
 goes straight to implementer with a one-line cause, in lean and balanced.
 
-Bug track, lean: intake → root-cause-analyst → implementer → verifier → commit (≈3 dispatches for an S bug).
+Bug track: lean → root-cause-analyst (skipped when the cause is explained in one line) → solo fix → haiku/sonnet
+verifier → commit (≈1–2 dispatches); balanced → root-cause-analyst → implementer → verifier (≈3).
 
 ## 3. Phase A and discovery
 - lean: discovery and source-analyzer merged into one dispatch for S/M; blueprint only if UI or contracts; 1
@@ -48,4 +68,5 @@ Bug track, lean: intake → root-cause-analyst → implementer → verifier → 
 summary reach the model (last 60 lines of failures). Opt out per repo with `Filter: off` in project.md.
 
 ## 6. Expected dispatches (for the PLAN GATE estimate)
-lean: quick ≈ 3 · M feature (4 tickets) ≈ 14–18 · L (8 tickets) ≈ 35–50. balanced ≈ 1.3× lean. thorough ≈ 2× lean.
+lean: quick ≈ 1–2 · S bug ≈ 2 · M feature (4 tickets) ≈ 9–12 · L (8 tickets) ≈ 30–45 (L tickets never go solo).
+balanced: quick ≈ 3 · M ≈ 14–18 · L ≈ 35–50. thorough ≈ 2× balanced. Migrations use at least balanced.

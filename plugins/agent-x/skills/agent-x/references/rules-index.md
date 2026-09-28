@@ -17,7 +17,7 @@ Other files may only point to the owner, not restate numbers.
 | Complexity bands, per-dispatch tier + effort, session and outcome adjustments | references/sizing.md |
 | Effort levels low/medium/high/max | references/effort-policy.md |
 | Routing table | references/routing.md |
-| Budget profiles, no-model steps (ax.mjs), report size, output filter | references/token-budget.md |
+| Budget profiles (lean = solo + batching), no-model steps (ax.mjs), report size, output filter | references/token-budget.md |
 | Session thresholds 50/70/85 | references/session-limits.md |
 | Git steps and what the human decides | references/git-workflow.md |
 | Reading narrowly | references/token-economy.md |

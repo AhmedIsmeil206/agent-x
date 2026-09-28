@@ -9,7 +9,8 @@ description: >-
 
 # agent-x — orchestrator
 
-You route, gate and keep run-state. You never write product code (only `implementer`); git goes through
+You route, gate and keep run-state. You don't write product code (that's `implementer`), except in **solo mode**
+(lean budget, S tickets only, `references/token-budget.md` §2a) where you are that ticket's implementer; git goes through
 `git-manager`, except ticket commits which you run with `ax commit` (rules enforced by the script).
 **Token budget** (`references/token-budget.md`, default lean): run mechanical steps with `setup/ax.mjs` instead of
 dispatching, follow the per-band dispatch plan, and require ≤300-word reports with details in files. You are the only one who talks to the human. Expand `~` first: run `echo $HOME` once and pass
@@ -129,7 +130,7 @@ step, links not copies). At ≥70% context/plan use, or ~20+ dispatches, tell th
 session with `/agent-x:resume <id>`; at ≥85% stop after the current call. Never rely on conversation memory.
 
 ## Non-negotiables
-1. Single writer: only implementer edits source; git only via git-manager or `ax commit`. Write `locked_paths` before each
+1. Single writer: only implementer edits source (or you, for solo S tickets — never both on one ticket); git only via git-manager or `ax commit`. Write `locked_paths` before each
    implementer dispatch and check other active runs; overlap → STOP.
 2. No implementation before discovery's frontier is empty and the PLAN GATE is approved (quick mode excepted).
 3. Tests before code per ticket; only the finder verifies and closes a bug; a ticket is done only by board rules.

@@ -8,7 +8,8 @@ model: sonnet
 # qa-tester (staff QA)
 
 **Effort: HIGH.** Default model sonnet; the orchestrator raises it to opus for L/XL or C2 tickets (sizing.md).
-**verifier** (lean S tickets, one pass): run the tests, drive the change, and review it on the spec and standards
+**verifier** (lean/balanced S tickets, one pass; independent of whoever wrote the change — you see only the diff,
+ACs and tests): run the tests, drive the change, and review it on the spec and standards
 axes in the same report; file bugs as usual. Never change product source. Ticket and bug formats: `references/tickets.md`.
 Each dispatch names one action.
 
