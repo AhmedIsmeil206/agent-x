@@ -1,0 +1,995 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "migrate-feature run-state",
+    "description": "Authoritative per-migration state owned by the main thread (N0). One file per run at docs/migrations/<id>/run-state.json, where <id> is the run id (e.g. 03-talent-search). No subagent writes this.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "surface", "task", "acceptance_criteria", "phase", "retry_counters", "gates"],
+    "allOf": [
+        {
+            "description": "G1 INTAKE ENFORCED — a run at any phase past Intake MUST carry a resolvable design_source and a frozen acceptance_criteria. A run-state missing these is SCHEMA-INVALID and passes no gate.",
+            "if": {
+                "type": "object",
+                "properties": {
+                    "phase": {
+                        "enum": ["A", "B", "C", "Devops", "Merged"]
+                    }
+                },
+                "required": ["phase"]
+            },
+            "then": {
+                "required": ["design_source", "acceptance_criteria", "target"]
+            }
+        },
+        {
+            "description": "G3+G4 FROZEN PHASE-A ARTIFACTS — once Gate A is sealed, design_capture, interactive_state_matrix, functionality_inventory and design_system_inventory MUST all exist. No code is written before them; a run-state sealing Gate A without them is SCHEMA-INVALID.",
+            "if": {
+                "type": "object",
+                "properties": {
+                    "gates": {
+                        "type": "object",
+                        "properties": {
+                            "A": {
+                                "const": "sealed"
+                            }
+                        },
+                        "required": ["A"]
+                    }
+                },
+                "required": ["gates"]
+            },
+            "then": {
+                "required": [
+                    "design_capture",
+                    "interactive_state_matrix",
+                    "functionality_inventory",
+                    "design_system_inventory"
+                ]
+            }
+        },
+        {
+            "description": "G5 DESIGN-COMPARISON GATE — once Gate B passes, design_comparison MUST exist (both sides rendered and diffed). A Gate-B pass without it is SCHEMA-INVALID.",
+            "if": {
+                "type": "object",
+                "properties": {
+                    "gates": {
+                        "type": "object",
+                        "properties": {
+                            "B": {
+                                "const": "passed"
+                            }
+                        },
+                        "required": ["B"]
+                    }
+                },
+                "required": ["gates"]
+            },
+            "then": {
+                "required": ["design_comparison"]
+            }
+        },
+        {
+            "description": "G7+G10 SHIP PRECONDITIONS — at phase Devops the run MUST carry route_integrity (per env), route_completeness, and devops_cutover (per env status).",
+            "if": {
+                "type": "object",
+                "properties": {
+                    "phase": {
+                        "enum": ["Devops", "Merged"]
+                    }
+                },
+                "required": ["phase"]
+            },
+            "then": {
+                "required": ["route_integrity", "route_completeness", "devops_cutover"]
+            }
+        },
+        {
+            "description": "PLAN GATE — Phase B and beyond require human approval of the plan. A run-state at phase B/C/Devops without gates.plan = 'approved' is SCHEMA-INVALID: the engine may not start building before the human approved the phased plan.",
+            "if": {
+                "type": "object",
+                "properties": {
+                    "phase": {
+                        "enum": ["B", "C", "Devops", "Merged"]
+                    }
+                },
+                "required": ["phase"]
+            },
+            "then": {
+                "type": "object",
+                "properties": {
+                    "gates": {
+                        "type": "object",
+                        "properties": {
+                            "plan": {
+                                "const": "approved"
+                            }
+                        },
+                        "required": ["plan"]
+                    }
+                },
+                "required": ["gates"]
+            }
+        }
+    ],
+    "properties": {
+        "id": {
+            "type": "string",
+            "description": "e.g. 03-talent-search"
+        },
+        "surface": {
+            "enum": ["new-feature", "migrate-page", "design-clone"]
+        },
+        "case": {
+            "description": "Chosen migration case(s): a single id, or an ORDERED array when a legacy page matches 2+ patterns (mix, e.g. [case5, case6, case3]). null for new-feature / design-clone.",
+            "oneOf": [
+                {
+                    "type": "null"
+                },
+                {
+                    "enum": [
+                        "case1-new-feature",
+                        "case2-static-page",
+                        "case3-dynamic-page",
+                        "case4-inline-php",
+                        "case5-shared-shell",
+                        "case6-refactor-jquery"
+                    ]
+                },
+                {
+                    "type": "array",
+                    "items": {
+                        "enum": [
+                            "case1-new-feature",
+                            "case2-static-page",
+                            "case3-dynamic-page",
+                            "case4-inline-php",
+                            "case5-shared-shell",
+                            "case6-refactor-jquery"
+                        ]
+                    },
+                    "minItems": 1
+                }
+            ]
+        },
+        "task": {
+            "type": "string",
+            "description": "Frozen at intake. Never changes mid-run."
+        },
+        "acceptance_criteria": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "minItems": 1
+        },
+        "legacy_source": {
+            "type": "object",
+            "description": "What in ../forasna this maps to (read-only reference). `path` is the SCOPE: every legacy read in the run starts inside it, so nodes never sweep the legacy repo. Captured at intake.",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "REQUIRED for migrate-page. The folder (or single file) in ../forasna that contains this page — e.g. 'application/modules/employer/talent' or 'assets/js/employer'. Legacy reads MUST be scoped to it: grep/glob inside this path first and only widen if the page provably references something outside it, saying so. This is the run's main token saver — it removes the repo-wide search."
+                },
+                "route": {
+                    "type": "string",
+                    "description": "the legacy URL/route this page serves"
+                },
+                "tpl": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "controller": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "js": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "out_of_scope_reads": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "files a node had to read OUTSIDE legacy_source.path, each with why. Keeps widening visible instead of silent."
+                }
+            },
+            "required": ["path"]
+        },
+        "route_feature_spec": {
+            "type": "object",
+            "description": "The route's FEATURE SPEC extracted by legacy-decompiler from legacy_source.path — what the route is for and what it does, the basis of the migration. Presented at the PLAN GATE and reconciled at N13; every core functionality must survive into the migrated route.",
+            "properties": {
+                "purpose": {
+                    "type": "string",
+                    "description": "one or two sentences: what this route/feature is for, from the user's POV"
+                },
+                "core_functionalities": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "the ranked list of what the route actually does — each must map to functionality_inventory items and survive into the migrated route"
+                }
+            }
+        },
+        "target": {
+            "type": "object",
+            "properties": {
+                "route": {
+                    "type": "string",
+                    "description": "src/routes/... path"
+                },
+                "role": {
+                    "enum": ["employer", "jobseeker", "guest", "shared", "otp"]
+                },
+                "domain": {
+                    "type": "string",
+                    "description": "src/api/<domain>"
+                }
+            }
+        },
+        "phase": {
+            "description": "Engine-driven up to Devops. 'Merged' and 'Reverted' are set by the DEVELOPER after they do the git work manually — the engine never sets them.",
+            "enum": ["Intake", "A", "B", "C", "Devops", "Merged", "Parked", "Descoped", "Reverted"]
+        },
+        "design_source": {
+            "type": "object",
+            "description": "G1/G5 THE SOURCE OF TRUTH the UI/UX axis is diffed against, resolved at intake. type 'figma' REQUIRES a Figma MCP node ref; type 'url' REQUIRES a reachable production/legacy URL captured LIVE. For surface migrate-page or design-clone, type 'none' is FORBIDDEN — intake MUST STOP (DoR hard-fail) rather than seed it.",
+            "required": ["type", "ref"],
+            "properties": {
+                "type": {
+                    "enum": ["figma", "url", "none"]
+                },
+                "ref": {
+                    "type": "string",
+                    "description": "fileKey:nodeId for figma, or the absolute URL for url"
+                },
+                "captured_live": {
+                    "type": "boolean",
+                    "description": "true only when the source was actually RENDERED (Figma MCP call or Chrome navigation). Reading .tpl/source markup instead is forbidden and MUST leave this false, which blocks code."
+                }
+            }
+        },
+        "design_comparison": {
+            "type": "object",
+            "description": "G5 DESIGN-COMPARISON GATE artifact. visual-verifier renders BOTH sides — the design_source (Figma node via Figma MCP, else the production/legacy URL captured live) AND the running implementation at dev_url — and diffs them per element/state/breakpoint, RTL included. The diff lives in the verifier's report (session), NOT a repo file; run-state records only the score + proof booleans. Required once Gate B passes.",
+            "required": ["source_type", "ui_ux_score", "both_sides_rendered"],
+            "properties": {
+                "source_type": {
+                    "enum": ["figma", "url"],
+                    "description": "which side-A source was rendered"
+                },
+                "source_ref": {
+                    "type": "string"
+                },
+                "both_sides_rendered": {
+                    "type": "boolean",
+                    "description": "MUST be true to pass. false = the verifier compared against a stored manifest instead of re-rendering the source; that is a rejected report, not a score."
+                },
+                "diff_table": {
+                    "type": "string",
+                    "description": "OPTIONAL. The per-element × state × breakpoint diff is returned INLINE in the verifier's report (session knowledge), never written to a design/ folder. If set, a short in-report anchor only."
+                },
+                "ui_ux_score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "gating": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "true when a design target exists (≥0.98 GATES, miss opens a back-edge to react-synthesizer, cap 3). false only when design_source.type = 'none' — then report-only, but the score is still shown at the gate."
+                },
+                "properties_diffed": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "G5 REQUIRES these to be explicit diffed properties, never 'looks close': icon weight/stroke, padding, margin, color, background, line-height, letter-spacing, font-family/size/weight, gap, border, border-radius, box-shadow, width/height, direction."
+                },
+                "states_unexercised": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "G6 MUST be empty to pass. Any unexercised interactive state is an automatic FAIL, never an omission."
+                }
+            }
+        },
+        "devops_cutover": {
+            "type": "object",
+            "description": "G10 per-environment cutover status. Both envs are part of 'done': testing APPLIED, production PREPARED in the same diff. The N13 gate MUST list any env still lacking the route as an open blocker.",
+            "properties": {
+                "testing": {
+                    "enum": ["missing", "applied"],
+                    "default": "missing"
+                },
+                "production": {
+                    "enum": ["missing", "prepared", "applied"],
+                    "default": "missing",
+                    "description": "'prepared' = path appended in the same diff, marked 'apply on sign-off AND with/after the prod code deploy'. 'applied' only after N13 approval."
+                },
+                "path_regex": {
+                    "type": "string"
+                }
+            }
+        },
+        "dev_url": {
+            "type": "string",
+            "description": "Base URL of the dev server the orchestrator started for this run. Browser nodes (visual-verifier, a11y-auditor, integration-tester) have no Bash and cannot start one — they are handed this."
+        },
+        "locked_paths": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "Repo-relative paths this run's react-synthesizer intends to write. Before dispatching the writer, the orchestrator scans other docs/migrations/*/run-state.json for overlaps and halts to a human decision if two live runs claim the same file."
+        },
+        "human_gate_retries": {
+            "type": "integer",
+            "maximum": 2,
+            "default": 0,
+            "description": "N13 'changes' loops consumed. Independent of retry_counters; at 2 the run is forced to Parked or Descoped."
+        },
+        "phase_detail": {
+            "type": "string",
+            "description": "e.g. layer:variants or endpoint:GET /jobs"
+        },
+        "source_sha256": {
+            "type": "string",
+            "description": "Hash of the SPEC/design source; drift re-opens gates."
+        },
+        "legacy_sha256": {
+            "type": "string",
+            "description": "Hash of the legacy files; a legacy change to a migrated page re-opens Phase C."
+        },
+        "branch": {
+            "type": "string",
+            "description": "feat|revamp|fix/<NN>-<slug>"
+        },
+        "tooling_absent": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "e.g. msw, chrome-devtools, figma"
+        },
+        "open_questions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["q", "default", "expiry"],
+                "properties": {
+                    "q": {
+                        "type": "string"
+                    },
+                    "default": {
+                        "type": "string",
+                        "description": "Cheap-to-reverse build if no answer."
+                    },
+                    "expiry": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "answer": {
+                        "type": ["string", "null"]
+                    },
+                    "hard_blocked": {
+                        "type": "boolean",
+                        "default": false
+                    }
+                }
+            }
+        },
+        "retry_counters": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "verify": {
+                    "type": "integer",
+                    "maximum": 3,
+                    "default": 0
+                },
+                "qa": {
+                    "type": "integer",
+                    "maximum": 3,
+                    "default": 0
+                },
+                "review": {
+                    "type": "integer",
+                    "maximum": 3,
+                    "default": 0
+                },
+                "a11y": {
+                    "type": "integer",
+                    "maximum": 3,
+                    "default": 0
+                },
+                "security": {
+                    "type": "integer",
+                    "maximum": 3,
+                    "default": 0
+                },
+                "integration": {
+                    "type": "integer",
+                    "maximum": 3,
+                    "default": 0
+                }
+            }
+        },
+        "design_capture": {
+            "type": "object",
+            "description": "FROZEN Phase-A artifact (2a), held as SESSION KNOWLEDGE — the orchestrator keeps the rendered facts in context and threads them into downstream prompts. Screenshots and the raw computed-style dump are NOT written to the repo; run-state carries only compact PROOF metadata that the capture happened at full depth. No code is written before this exists.",
+            "required": ["rendered", "breakpoints", "properties_captured"],
+            "properties": {
+                "breakpoints": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "minItems": 3,
+                    "description": "G3 the viewports rendered — mobile, tablet AND desktop are all required (names, not file paths)."
+                },
+                "rendered": {
+                    "const": true,
+                    "description": "G3 MUST be true: captured from a RENDERED page (Chrome navigation or Figma MCP), held in session. Building from .tpl/source markup alone is FORBIDDEN — anything other than true is schema-invalid and blocks all code."
+                },
+                "properties_captured": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "G5 the computed-style properties actually read per element, held in the orchestrator's session for planning + verification. MUST include the visual-weight set the fidelity score depends on: color, background, font-family, font-size, font-weight, line-height, letter-spacing, padding, margin, gap, width, height, border, border-radius, box-shadow, opacity, text-align, direction, and icon stroke-width/size."
+                }
+            }
+        },
+        "interactive_state_matrix": {
+            "type": "object",
+            "description": "FROZEN Phase-A artifact (2a), held in session as structured text (NOT a repo file). Per element, every state it can be in, at each breakpoint. visual-verifier/qa-tester must exercise EVERY entry; an unexercised state is an automatic FAIL.",
+            "properties": {
+                "states": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["element", "state"],
+                        "properties": {
+                            "element": {
+                                "type": "string",
+                                "description": "stable element path/selector"
+                            },
+                            "state": {
+                                "enum": [
+                                    "default",
+                                    "hover",
+                                    "focus",
+                                    "active",
+                                    "expanded",
+                                    "collapsed",
+                                    "empty",
+                                    "loading",
+                                    "error",
+                                    "disabled",
+                                    "rtl"
+                                ]
+                            },
+                            "breakpoint": {
+                                "type": "string"
+                            },
+                            "exercised": {
+                                "type": "boolean",
+                                "default": false
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "functionality_inventory": {
+            "type": "array",
+            "description": "G4 FROZEN Phase-A scope contract (2b). EVERY link/control/state/form/endpoint/analytics/seo item. The planner MUST turn each into a phase or acceptance check. Silent scope narrowing is FORBIDDEN — a dropped item REQUIRES status 'waived' with a human-confirmed waiver_reason. The N13 gate MUST REFUSE to close while any item is neither 'done' nor 'waived'.",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": ["id", "kind", "status"],
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "enum": ["link", "control", "state", "form", "endpoint", "analytics", "seo"],
+                        "description": "'analytics' = a legacy GA/track() event the page fires (assert track() parity in Phase C). 'seo' = a head-metadata affordance the legacy page had (title/meta/canonical/lang/dir/OG/JSON-LD) whose parity must be reproduced. Both are gate-blocking inventory items — the N13 gate cannot close while either is still 'todo'."
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "target": {
+                        "type": "string",
+                        "description": "for a link: the href/route it points at"
+                    },
+                    "target_kind": {
+                        "enum": ["frontend-route", "legacy-path", "external", "n/a"],
+                        "description": "for a link: whether it resolves to a frontend route or a legacy path"
+                    },
+                    "phase": {
+                        "type": "string",
+                        "description": "the PLAN phase that satisfies this item"
+                    },
+                    "status": {
+                        "enum": ["todo", "done", "waived"]
+                    },
+                    "waiver_reason": {
+                        "type": "string",
+                        "description": "required when status = waived (human-confirmed)"
+                    }
+                }
+            }
+        },
+        "fidelity": {
+            "type": "object",
+            "description": "The FOUR-AXIS success bar. Each axis is measured and reported SEPARATELY — never averaged into one number. A page is 'done' only when all four axes ≥ target (or the shortfall is human-waived).",
+            "properties": {
+                "compare_against": {
+                    "enum": ["legacy-capture", "figma", "none"],
+                    "description": "What the UI/UX diff table is measured against (the design-truth baseline)."
+                },
+                "axes": {
+                    "type": "object",
+                    "description": "The four separately-measured scores. Never collapse to one.",
+                    "properties": {
+                        "ui_ux": {
+                            "type": "object",
+                            "description": "computed-style + DOM diff across ALL states × breakpoints, RTL-correct. visual-verifier.",
+                            "properties": {
+                                "score": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                },
+                                "target": {
+                                    "type": ["number", "null"],
+                                    "default": 0.98,
+                                    "description": "0.98 gating. null = REPORT-ONLY vs the LEGACY look only, valid solely for a human-declared redesign — the page is still gated ≥0.98 vs the new design-truth artifact."
+                                },
+                                "diff_table": {
+                                    "type": "string",
+                                    "description": "the per-element/per-state diff, returned inline in visual-verifier's report (session, not a repo file)"
+                                }
+                            }
+                        },
+                        "code_logic": {
+                            "type": "object",
+                            "description": "behavior/branching/state transitions reproduced (mapped, not transliterated). qa-tester + code-reviewer.",
+                            "properties": {
+                                "score": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                },
+                                "target": {
+                                    "type": "number",
+                                    "default": 0.98
+                                },
+                                "evidence": {
+                                    "type": "string",
+                                    "description": "path to the branch-coverage / test evidence"
+                                }
+                            }
+                        },
+                        "code_structure": {
+                            "type": "object",
+                            "description": "architecture/structure conformance, scored SEPARATELY from code_logic. container/presenter split; the src/api triad for all server state; @/* alias; import type; no `any`; Zod at boundaries; correct file/role placement with NO files-and-folders-naming-rules violation; no duplication of existing components/hooks; SEO/SSR head-metadata parity. code-reviewer scores it as (conformant checks / total checks).",
+                            "properties": {
+                                "score": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                },
+                                "target": {
+                                    "type": "number",
+                                    "default": 0.98
+                                },
+                                "evidence": {
+                                    "type": "string",
+                                    "description": "path to the code-reviewer structure-conformance checklist result (per-check pass/fail with file:line)"
+                                }
+                            }
+                        },
+                        "functionality": {
+                            "type": "object",
+                            "description": "every link/control/form/endpoint works end-to-end. qa-tester + integration-tester. Derived from functionality_inventory done/total.",
+                            "properties": {
+                                "score": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                },
+                                "target": {
+                                    "type": "number",
+                                    "default": 0.98
+                                },
+                                "evidence": {
+                                    "type": "string",
+                                    "description": "path to the in-browser drive log / nav+network evidence"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "route_integrity": {
+            "type": "array",
+            "description": "STEP 4b output. Per href × environment: does it resolve, is it frontend/legacy, does it behave. Reconciled against the ingress allowlists.",
+            "items": {
+                "type": "object",
+                "required": ["href", "env"],
+                "properties": {
+                    "href": {
+                        "type": "string"
+                    },
+                    "env": {
+                        "enum": ["localhost", "testing", "production"]
+                    },
+                    "resolves": {
+                        "type": "boolean"
+                    },
+                    "target_kind": {
+                        "enum": ["frontend-route", "legacy-path", "external"]
+                    },
+                    "in_ingress_allowlist": {
+                        "type": "boolean"
+                    },
+                    "relative": {
+                        "type": "boolean",
+                        "description": "deployed builds must keep cross-app links relative; a hardcoded cross-env origin is a failure"
+                    },
+                    "result": {
+                        "enum": ["pass", "fail"]
+                    }
+                }
+            }
+        },
+        "shared_modules": {
+            "type": "array",
+            "description": "EXTRACT-ONCE REGISTRY for legacy code reused across MORE THAN ONE page — a shared PHP service/model, a shared jQuery util, a shared .tpl partial, a shared validation rule. The FIRST run to touch a shared dependency migrates it into a shared frontend home and records it here; LATER runs REUSE the recorded home and MUST NOT re-migrate it (that is how the same model gets migrated five inconsistent ways). legacy-decompiler flags candidates (a symbol whose legacy definition lives OUTSIDE this run's legacy_source.path yet is referenced by it); pattern-mapper decides the shared frontend home; the orchestrator reconciles against OTHER runs' shared_modules before building. A shared module claimed 'migrating' by another live run STOPS this run to a human decision (cross-run lock), exactly like locked_paths.",
+            "items": {
+                "type": "object",
+                "required": ["id", "legacy_symbol", "status"],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "stable kebab-case id, e.g. 'salary-format-util' or 'company-model'"
+                    },
+                    "legacy_symbol": {
+                        "type": "string",
+                        "description": "the shared legacy definition — function/class/service/partial name AND its file:line, e.g. 'formatSalary() assets/js/common/format.js:42' or 'Company entity application/models/Company.php'"
+                    },
+                    "legacy_path": {
+                        "type": "string",
+                        "description": "the file the shared symbol is DEFINED in (OUTSIDE this run's legacy_source.path — that is what makes it shared). Recorded in legacy_source.out_of_scope_reads too."
+                    },
+                    "used_by": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "the legacy pages/routes known to consume it — the evidence it is shared, not page-local. ≥2 consumers is the bar for 'shared'."
+                    },
+                    "kind": {
+                        "enum": ["model", "service", "util", "validation", "partial", "hook", "constant", "other"],
+                        "description": "what the shared thing is, which decides its frontend home"
+                    },
+                    "frontend_home": {
+                        "type": "string",
+                        "description": "where it is (or will be) migrated to ONCE and reused, in an EXISTING repo home (all verified to exist): a shared src/api/<domain> triad + a src/types type for a model, src/components/shared for a .tpl partial, a src/hooks/use-* or src/lib util for logic, a src/forms/schemas Zod schema for validation, a src/constants entry for a constant. Named per files-and-folders-naming-rules. It is EXTENDED in place by later consumers, never forked."
+                    },
+                    "migrated_fields": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "PARTIAL-MIGRATION ledger: the fields/methods/props of the legacy symbol actually migrated into frontend_home so far. A later consumer needing something not listed here EXTENDS the home in place (adds it) and re-runs the shared module's tests + earlier consumers' tests — it never forks a second copy. code-reviewer blocks a fork."
+                    },
+                    "status": {
+                        "enum": ["candidate", "migrating", "migrated", "reused", "extended", "drifted", "waived"],
+                        "description": "candidate (flagged, not yet decided) → migrating (THIS run owns it; a cross-run lock) → migrated (its frontend_home now exists) → reused (an EARLIER run already migrated it; this run imports it after a CONTRACT CHECK that it exposes what this consumer needs) → extended (a later run added a field/method the first migration lacked, in place, and re-verified earlier consumers) → drifted (the legacy symbol's legacy_sha256 changed after migration — re-open the shared module's Phase C AND flag every used_by consumer as blast radius) → waived (human-confirmed out of scope). Two live runs both 'migrating' the same id STOPS to a human decision."
+                    },
+                    "legacy_sha256": {
+                        "type": "string",
+                        "description": "hash of the shared legacy symbol's source at migration time. On any later run, if the live hash differs, status → 'drifted': re-open the shared module's Phase C and flag every used_by consumer whose behavior could shift, so the human sees the blast radius at the gate. A shared-logic change never lands silently across live pages."
+                    },
+                    "owning_run": {
+                        "type": "string",
+                        "description": "the run id that migrated (or is migrating) it — so a later run knows whose frontend_home to reuse"
+                    },
+                    "waiver_reason": {
+                        "type": "string",
+                        "description": "required when status = waived (human-confirmed)"
+                    }
+                }
+            }
+        },
+        "route_completeness": {
+            "type": "array",
+            "description": "PER-ROUTE/PAGE structural completeness (STEP 4b). One row per in-scope legacy route/page: does a corresponding frontend route exist, in the CORRECT route group, with head-metadata (SEO) parity. The N13 gate cannot close while any in-scope legacy route lacks a matching frontend route or is placed in the wrong group. Completeness is tracked at the ROUTE level here, separate from the item-level functionality_inventory.",
+            "items": {
+                "type": "object",
+                "required": ["legacy_route", "status"],
+                "properties": {
+                    "legacy_route": {
+                        "type": "string",
+                        "description": "the in-scope legacy URL/page"
+                    },
+                    "frontend_route": {
+                        "type": "string",
+                        "description": "the src/routes/... path that satisfies it"
+                    },
+                    "route_group": {
+                        "enum": ["_private", "_guest", "_public", "n/a"],
+                        "description": "the group the frontend route lands in; must match the legacy auth posture ($_SESSION guard → _private)"
+                    },
+                    "head_parity": {
+                        "type": "boolean",
+                        "description": "true when title/meta/canonical/lang/dir/OG/JSON-LD parity with the legacy page is reproduced on the route"
+                    },
+                    "status": {
+                        "enum": ["todo", "done", "waived"]
+                    },
+                    "waiver_reason": {
+                        "type": "string",
+                        "description": "required when status = waived (human-confirmed)"
+                    }
+                }
+            }
+        },
+        "endpoints": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "endpoint": {
+                        "type": "string"
+                    },
+                    "state": {
+                        "enum": ["proposed", "mocked", "wired", "drifted"],
+                        "description": "proposed (URL given at intake, shape not yet resolved) → mocked (MSW, shape inferred/labeled) → wired (real endpoint confirmed, DTO contract re-checked). 'drifted' = a wired endpoint whose legacy_sha256 changed after Gate C, re-opening Phase C."
+                    },
+                    "example": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "devops": {
+            "type": "object",
+            "description": "Route cutover is part of 'done' and spans BOTH envs. The route regex is appended to testing AND production values in the SAME diff; testing is applied now, production is prepared-but-not-live until human sign-off + the production code deploy. The N13 gate lists every env still lacking the route as an open blocker.",
+            "properties": {
+                "testing_cutover": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "testing-values.yaml path applied (reachable for validation)"
+                },
+                "production_prepared": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "production-values.yaml path appended in the same diff, marked 'apply on sign-off AND with/after the prod code deploy' — prepared, not yet live"
+                },
+                "production_cutover": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "production path approved to go live (set at N13 'approved'); the developer commits it as its own commit"
+                },
+                "path_regex": {
+                    "type": "string"
+                }
+            }
+        },
+        "decisions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "date": {
+                        "type": "string"
+                    },
+                    "what": {
+                        "type": "string"
+                    },
+                    "why": {
+                        "type": "string"
+                    },
+                    "reversal_cost": {
+                        "enum": ["low", "med", "high"]
+                    }
+                }
+            }
+        },
+        "gates": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "A": {
+                    "enum": ["pending", "sealed"]
+                },
+                "plan": {
+                    "enum": ["pending", "approved", "changes"],
+                    "description": "The PLAN-APPROVAL gate between Phase A and Phase B. The planner presents PLAN.md in chat (phases + tasks + each phase's agentic loop + goal + design-system reuse/additions); Phase B MUST NOT start until the human returns 'approved'. 'changes' loops back to the planner."
+                },
+                "B": {
+                    "enum": ["pending", "passed"]
+                },
+                "C": {
+                    "enum": ["pending", "in-progress", "passed"]
+                },
+                "human": {
+                    "enum": ["pending", "approved", "changes", "rejected"]
+                }
+            }
+        },
+        "last_node": {
+            "type": "string"
+        },
+        "next": {
+            "type": "string",
+            "description": "The node to route next session."
+        },
+        "design_system_inventory": {
+            "type": "object",
+            "description": "FROZEN Phase-A artifact (2c). The design-system mapping for EVERY visual primitive on the source. Produced on EVERY run regardless of the declared case — a 'static'/case2 page changes the DATA wiring only, never the depth of extraction. Missing this blocks Gate A.",
+            "required": ["primitives"],
+            "properties": {
+                "primitives": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "required": ["legacy", "maps_to"],
+                        "properties": {
+                            "legacy": {
+                                "type": "string",
+                                "description": "the legacy widget/class/glyph as it appears in the source"
+                            },
+                            "maps_to": {
+                                "type": "string",
+                                "description": "the repo primitive to REUSE (src/components/... , shadcn/Radix component, cva variant) — reuse before build"
+                            },
+                            "reuse": {
+                                "enum": ["reuse-existing", "extend-existing", "build-new"],
+                                "description": "build-new REQUIRES a logged reason; an existing primitive must be reused before a new one is written"
+                            },
+                            "tokens": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "description": "the Tailwind/theme tokens the captured values resolve to"
+                            },
+                            "verify_states": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "description": "the interactive-state-matrix states this primitive MUST be verified in (mapping is NOT 1:1)"
+                            },
+                            "drift": {
+                                "type": "string",
+                                "description": "set when a captured value has no token in the scale — a design-drift flag to log, never a raw hex silently inlined"
+                            }
+                        }
+                    }
+                },
+                "tokens_missing": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "captured values with no matching token — surfaced at N13 as design drift"
+                }
+            }
+        },
+        "extraction_contract": {
+            "type": "object",
+            "description": "Seeded at intake. A declared case selects the BUILD workflow only and MUST NOT reduce Phase-A extraction depth. Present so no node can read 'static' as 'extract less'.",
+            "properties": {
+                "full_extraction_required": {
+                    "const": true,
+                    "description": "Always true. Extraction depth is constant across all cases and surfaces."
+                },
+                "note": {
+                    "type": "string"
+                }
+            }
+        },
+        "plan": {
+            "type": "object",
+            "description": "The planner's output, presented in chat for human approval before Phase B. Phases each carry a goal tied to the phase's purpose, an ordered task list, and the agentic build->coverage->gate loop that satisfies them.",
+            "properties": {
+                "presented": {
+                    "type": "boolean",
+                    "description": "true once the planner presented the plan in chat and asked the human to continue / add / consider / edit / remove."
+                },
+                "phases": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["id", "goal"],
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "e.g. B1, B2, C1"
+                            },
+                            "name": {
+                                "type": "string"
+                            },
+                            "goal": {
+                                "type": "string",
+                                "description": "what this phase must achieve, tied to its purpose"
+                            },
+                            "tasks": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "agentic_loop": {
+                                "type": "string",
+                                "description": "the build->coverage->gate loop + which nodes run + the cap"
+                            },
+                            "reuse": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "description": "existing components/tokens this phase REUSES"
+                            },
+                            "exit": {
+                                "type": "string",
+                                "description": "the four-axis exit condition for this phase's slice"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "design_system_additions": {
+            "type": "array",
+            "description": "Reusable design primitives (color, font, radius, spacing, shared component) that the source needs but the repo's design system does NOT yet have. Each is PROMOTED to a global token/component in src/styles.css @theme (or the shared components dir), NAMED per .claude/rules/design-system.md + files-and-folders-naming-rules, and only THEN used — never inlined as a one-off. Surfaced in the plan for human approval; react-synthesizer adds it before using it.",
+            "items": {
+                "type": "object",
+                "required": ["kind", "name", "value", "target"],
+                "properties": {
+                    "kind": {
+                        "enum": ["color", "font", "radius", "spacing", "shadow", "component", "variant", "other"]
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "the global name to add, following the existing convention (e.g. a color ramp --color-<FAMILY><STOP>, --font-*, --radius-*, or a kebab-case shared component)"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "the token value (hex/px/font stack) or the component's source of truth"
+                    },
+                    "target": {
+                        "type": "string",
+                        "description": "where it lands, e.g. 'src/styles.css @theme' or 'src/components/shared/...'"
+                    },
+                    "reused_by": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "the inventory items / elements that will consume it — justifies making it global rather than local"
+                    },
+                    "approved": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "set true when the human approves the plan that contains it"
+                    }
+                }
+            }
+        }
+    }
+}

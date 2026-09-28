@@ -1,0 +1,801 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agent-x run-state",
+  "type": "object",
+  "required": [
+    "id",
+    "slug",
+    "mode",
+    "phase",
+    "task",
+    "acceptance_criteria",
+    "profiles",
+    "counters",
+    "budget",
+    "updated_at"
+  ],
+  "properties": {
+    "engine_version": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9]{2,}-[a-z0-9]+(-[a-z0-9]+)*$|^[0-9]{6}-[a-z0-9-]+$"
+    },
+    "slug": {
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "feature",
+        "migration",
+        "refactor",
+        "fix",
+        "design-clone",
+        "spec-only"
+      ]
+    },
+    "mode": {
+      "enum": [
+        "quick",
+        "standard",
+        "full"
+      ]
+    },
+    "mode_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "phase": {
+      "enum": [
+        "Intake",
+        "PhaseA",
+        "PlanGate",
+        "Build",
+        "Verify",
+        "FinalGate",
+        "Done",
+        "Descoped",
+        "Reverted",
+        "Blocked",
+        "PR",
+        "PRLoop",
+        "Merged"
+      ]
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "not": {
+          "pattern": "^(TODO|TBD|FIXME|n/a)$"
+        }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "package",
+          "profile"
+        ],
+        "properties": {
+          "package": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "web",
+              "mobile",
+              "backend",
+              "other"
+            ]
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "out_of_scope_reads": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "design_source": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "figma",
+            "url",
+            "screenshots",
+            "none"
+          ]
+        },
+        "ref": {
+          "type": "string"
+        }
+      }
+    },
+    "contracts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "functionality_inventory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "done",
+              "waived"
+            ]
+          },
+          "waiver_reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "shared_modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "home": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "migrating",
+              "migrated",
+              "reused"
+            ]
+          }
+        }
+      }
+    },
+    "locked_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "plan": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "changes_requested": {
+          "type": "integer",
+          "maximum": 2
+        }
+      }
+    },
+    "axes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "score"
+        ],
+        "properties": {
+          "score": {
+            "oneOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              {
+                "enum": [
+                  "n/a",
+                  "unmeasured"
+                ]
+              }
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "where": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "fixed",
+              "waived"
+            ]
+          }
+        }
+      }
+    },
+    "counters": {
+      "type": "object",
+      "required": [
+        "back_edges",
+        "inner_loops",
+        "human_changes"
+      ],
+      "properties": {
+        "back_edges": {
+          "type": "integer",
+          "maximum": 3
+        },
+        "inner_loops": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "maximum": 2
+          }
+        },
+        "human_changes": {
+          "type": "integer",
+          "maximum": 2
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "required": [
+        "max_dispatches",
+        "used"
+      ],
+      "properties": {
+        "max_dispatches": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "used": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "tooling_absent": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "last_node": {
+      "type": "string"
+    },
+    "next": {
+      "type": "string"
+    },
+    "suggested_branch": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "jira": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "sync": {
+          "type": "boolean"
+        },
+        "statuses": {
+          "type": "object"
+        }
+      }
+    },
+    "git": {
+      "type": "object",
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "commits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pr_url": {
+          "type": "string"
+        },
+        "reviewers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "merged": {
+          "type": "boolean"
+        },
+        "merge_method": {
+          "enum": [
+            "squash",
+            "merge",
+            "rebase"
+          ]
+        }
+      }
+    },
+    "root_causes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "cause"
+        ],
+        "properties": {
+          "cause": {
+            "type": "string"
+          },
+          "occurrences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "regression_test": {
+            "type": "string"
+          },
+          "lesson": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "jira",
+            "spec-file",
+            "doc-url",
+            "pasted",
+            "mixed"
+          ]
+        },
+        "ref": {
+          "type": "string"
+        }
+      }
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "pr_loop": {
+      "type": "object",
+      "properties": {
+        "ci_rounds": {
+          "type": "integer",
+          "maximum": 3
+        },
+        "review_rounds": {
+          "type": "integer",
+          "maximum": 3
+        },
+        "open_comments": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "cost": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "agent",
+          "model"
+        ],
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "dispatches": {
+            "type": "integer"
+          },
+          "external": {
+            "type": "boolean"
+          },
+          "effort": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "max"
+            ]
+          },
+          "band": {
+            "enum": [
+              "S",
+              "M",
+              "L",
+              "XL"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "dev_url": {
+          "type": "string"
+        },
+        "api_url": {
+          "type": "string"
+        },
+        "devices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "started": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "follow_ups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          },
+          "approved": {
+            "type": "boolean"
+          },
+          "ref": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "revert": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "pr_url": {
+          "type": "string"
+        }
+      }
+    },
+    "discovery": {
+      "type": "object",
+      "properties": {
+        "rounds": {
+          "type": "integer"
+        },
+        "frontier_empty": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "adrs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tickets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "todo",
+              "ready",
+              "in-progress",
+              "in-review",
+              "qa",
+              "done",
+              "blocked"
+            ]
+          },
+          "blocked_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "model_tier": {
+            "enum": [
+              "C0",
+              "C1",
+              "C2"
+            ]
+          },
+          "jira": {
+            "type": "string"
+          },
+          "band": {
+            "enum": [
+              "S",
+              "M",
+              "L"
+            ]
+          }
+        }
+      }
+    },
+    "bugs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "ticket",
+          "severity",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ticket": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "blocker",
+              "critical",
+              "major",
+              "minor",
+              "trivial"
+            ]
+          },
+          "status": {
+            "enum": [
+              "open",
+              "triaged",
+              "assigned",
+              "fixed",
+              "verified",
+              "closed",
+              "reopened",
+              "wontfix"
+            ]
+          },
+          "reopen_count": {
+            "type": "integer",
+            "maximum": 3
+          }
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "properties": {
+        "context_pct": {
+          "type": "number"
+        },
+        "plan_pct": {
+          "type": "number"
+        },
+        "source": {
+          "enum": [
+            "usage-feed",
+            "user",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "autonomy": {
+      "enum": [
+        "high-touch",
+        "normal",
+        "gates-only"
+      ]
+    },
+    "sizing": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "integer"
+        },
+        "band": {
+          "enum": [
+            "S",
+            "M",
+            "L",
+            "XL"
+          ]
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "mapping": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "integer"
+        },
+        "pending": {
+          "type": "integer"
+        },
+        "coverage": {
+          "type": "number"
+        },
+        "drifted": {
+          "type": "integer"
+        }
+      }
+    },
+    "is_migration": {
+      "type": "boolean"
+    },
+    "work_kind": {
+      "enum": [
+        "spec",
+        "bug"
+      ]
+    },
+    "bug_report": {
+      "type": "object",
+      "properties": {
+        "steps": {
+          "type": "string"
+        },
+        "expected": {
+          "type": "string"
+        },
+        "actual": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "last_known_good": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "affected": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

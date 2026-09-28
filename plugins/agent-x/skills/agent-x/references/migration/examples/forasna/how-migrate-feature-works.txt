@@ -1,0 +1,712 @@
+====================================================================
+HOW /migrate-feature WORKS  -  step by step
+====================================================================
+
+One command runs the whole pipeline. You do NOT call agents by hand.
+The skill calls them, owns the run state, and enforces every cap.
+It stops at exactly THREE points where a human is needed:
+N2 (clarify) -> THE PLAN GATE (approve the plan) -> N13 (final gate).
+
+THE GOAL: every migrated route/page reaches >=98% on FOUR separately
+measured axes - UI/UX fidelity, code logic, CODE STRUCTURE, feature
+functionality - never averaged into one number. A phase never exits
+below the bar; the run never closes until all four axes are met on
+every page or the human explicitly waives a shortfall.
+
+THREE THINGS THAT ARE ALWAYS TRUE:
+  * Intake runs FIRST and is enforced - no run-state.json, no run.
+  * A migrate-page run ALWAYS runs the full graph. "static/simple/
+    cost" may lower a MODEL TIER, never skip a required node.
+  * A DECLARED CASE NEVER REDUCES EXTRACTION. Saying "it's static"
+    picks the BUILD path only; Phase A still extracts everything.
+
+
+--------------------------------------------------------------------
+WHAT CHANGED RECENTLY  (read this if you knew the old flow)
+--------------------------------------------------------------------
+
+1. FOUR AXES, not three. "Code structure" is now its own scored,
+   gated axis (container/presenter split, the src/api triad, file
+   placement, zero naming-rule violations, SEO/SSR head parity),
+   measured by code-reviewer separately from code logic.
+
+2. NEW: THE PLAN GATE. After the planner, the plan is presented to
+   you IN CHAT and the engine STOPS. Phase B cannot start until you
+   approve. This is schema-enforced, not just a convention.
+
+3. NEW: DESIGN-COMPARISON GATE. visual-verifier must render BOTH
+   sides live - the design source (Figma node, else the production/
+   legacy URL) AND the running implementation - and diff them. A
+   report that did not render both sides is REJECTED, not scored.
+
+4. DESIGN CAPTURES ARE SESSION KNOWLEDGE, NOT REPO FILES. Screenshots
+   and computed-style dumps are never written to the repo. They live
+   in the orchestrator's context and get pasted into the prompts of
+   the nodes that need them.
+
+5. NEW: DESIGN-SYSTEM RECONCILIATION. Reuse what exists; anything
+   missing but reusable is PROMOTED to a global token/component
+   (named per the repo convention) and only then used.
+
+6. NEW: design_system_inventory - a third frozen Phase-A artifact.
+
+7. skill.md was cut ~49% (5426 -> ~2700 words) to lower the per-run
+   token cost. No gate was removed; duplication was.
+
+8. NEW: NOTHING IN INTAKE IS SKIPPABLE. Every field must be answered;
+   pressing Enter never means "leave it out". Where "no value" is
+   legitimate (no API domain, no endpoints, no notes) you must type
+   "none" so it is a recorded decision. Flag-mode runs get the same
+   completeness check.
+
+9. NEW: ONE CLARIFICATION ROUND, UP FRONT. Every unknown is collected
+   and asked ONCE in Phase A, before the planner runs - never
+   trickled during the build (STEP 5.6).
+
+10. NEW: THE LEGACY PATH FOLDER. Intake now captures the folder in
+   ../forasna that holds the page, and every legacy read is scoped to
+   it. This removes the repo-wide grep that was the biggest token sink
+   in a migration. It is a hard DoR requirement for migrate-page.
+
+
+--------------------------------------------------------------------
+STEP 1 - START THE RUN
+--------------------------------------------------------------------
+
+1.0  OPTIONAL FIRST: /route-spec <route>. Before migrating, you can
+     generate a comprehensive, read-only SPEC of a route with the
+     route-spec skill -> docs/route-specs/<slug>.spec.md (design link,
+     purpose + core functionalities, full UI/UX + state inventory,
+     code logic, every link/control/form/endpoint/analytics/seo,
+     related pages, shared modules, endpoint shapes, seed ACs). It
+     writes ONLY the .md (no code, no git), reusing the same read-only
+     agents Phase A uses. Its Pre-seed block feeds intake below: the
+     skill reads it, re-hashes the live source for DRIFT, and pre-fills
+     the intake fields (you still confirm scope + ACs). A "quick" spec
+     (decompiler-only outline, no design render) is NOT migration-ready;
+     a multi-page area gets an .index.spec.md whose per-route children
+     are the actual migration inputs.
+
+1.1  Just invoke the skill:  /migrate-feature
+
+     INTAKE IS A MARKDOWN WORKFLOW, NOT A SCRIPT. The skill runs
+     .claude/skills/migrate-feature/intake-workflow.md by ASKING you
+     in chat, step by step. A .js/.json script can silently skip a
+     field; a workflow read and executed line-by-line cannot - that
+     is the whole reason it is markdown. The workflow is authoritative.
+
+     There is no intake script - a .js/JSON script can silently skip a
+     field, a workflow read line-by-line cannot, which is the whole
+     point. If a run was already seeded, the skill reads
+     docs/migrations/<id>/ and continues instead of re-asking.
+
+1.2b NOTHING IN INTAKE MAY BE SKIPPED.
+
+     Every question must be answered - a blank Enter re-prompts, it
+     never means "skip". Where having no value is a legitimate answer
+     (API domain, endpoints, future-notes, legacy ref), you must TYPE
+     "none", so the absence is an explicit decision on the record
+     rather than an accident.
+
+     Validated on the spot: slug is kebab-case, the target route
+     starts with "/", a Chrome design ref is a real http(s) URL, a
+     Figma ref is fileKey:nodeId, and the legacy path must EXIST in
+     the legacy repo. Flag-mode (non-interactive) runs get the same
+     completeness check and refuse to seed an incomplete run.
+
+1.3  THREE HARD INTAKE STOPS (Definition of Ready):
+
+     * No real acceptance criteria      -> STOP. (TODO/TBD rejected.)
+     * No resolvable design source      -> STOP.
+     * No legacy path folder            -> STOP. (migrate-page only.)
+
+     For migrate-page and design-clone, a design source is REQUIRED:
+     either a live production/legacy URL or a Figma fileKey:nodeId.
+     "none" is FORBIDDEN for these surfaces - without a source of
+     truth the UI/UX axis can never be scored, so the wizard exits
+     rather than starting a run that cannot be graded.
+
+1.4  THE LEGACY PATH FOLDER (the read scope, and the main token saver)
+
+     For migrate-page, intake asks for the folder in ../forasna that
+     holds this page - the REVAMP ROUTE'S PATH IN THE OLD REPO:
+
+         Legacy PATH FOLDER in forasna to scope all reads to
+         (e.g. application/modules/employer/talent)
+
+     Non-interactive:  --legacy-path "application/modules/<area>"
+
+     The wizard CHECKS THE PATH EXISTS inside the legacy repo and
+     exits if it does not - a typo fails at intake, not three nodes
+     deep. It is stored as legacy_source.path.
+
+     WHY IT MATTERS: this is HOW the pipeline finds the original code
+     and extracts the route's FEATURE SPEC - its purpose and its core
+     functionalities - to migrate/revamp it. Without it, every
+     legacy-reading node greps the whole forasna app (thousands of
+     .php/.tpl/.js files) to find the page, slowly and maybe
+     incompletely. With it, legacy-decompiler and discovery start
+     INSIDE the folder and never sweep. It is asked in EVERY case that
+     has a legacy origin - the only run without one is a genuinely
+     net-new feature, and there you confirm "none" explicitly.
+
+     WIDENING IS ALLOWED BUT VISIBLE: if the page provably references
+     something outside the folder (a shared {include}, a shared JS
+     module), the node may read it - and MUST record the file plus the
+     reason in legacy_source.out_of_scope_reads. A repo-wide legacy
+     sweep is forbidden.
+
+
+--------------------------------------------------------------------
+STEP 2 - PICK THE SURFACE (the skill does this at intake)
+--------------------------------------------------------------------
+
+     migrate-page   port an existing legacy forasna page
+                    -> full pipeline: Phase A, B, C
+
+     new-feature    net-new, no legacy origin
+                    -> also loads skills/spec-new-feature
+
+     design-clone   match the look only, no data wiring
+                    -> Phase A + B + fidelity loop, NO Phase C
+
+
+--------------------------------------------------------------------
+STEP 3 - PICK THE CASE(S)  (migrate-page only)
+--------------------------------------------------------------------
+
+The skill reads the legacy source and detects the signals:
+
+     case1   feature shipped in PHP first    -> spec-first dual build
+     case2   pure .tpl, no ajax, no state    -> direct TPL to TSX
+     case3   $.ajax/$.get + known route      -> discover shapes, wire triad
+     case4   inline SQL, no REST endpoint    -> propose schema, mock w/ MSW
+     case5   header.tpl / $_SESSION shell    -> shared shell + useAuth()
+     case6   jqGrid/typeahead/DOM manip      -> imperative jQuery to React
+
+Most real pages match MORE THAN ONE case. Example: a talent-search
+page is case6 (jqGrid) + case3 (its ajax) + case5 (shell/auth).
+
+They always compose in this dependency order:
+
+     case5 (shell)  ->  case2/case6 (UI)  ->  case3/case4 (data)
+
+case5 runs ONCE globally, before any per-page migration.
+
+IMPORTANT - THE CASE ONLY PICKS THE BUILD PATH.
+It never reduces how much gets extracted in Phase A. A "static"
+case2 page still gets: the complete legacy JSON spec, the complete
+functionality inventory, the rendered design capture at all three
+breakpoints, the interactive-state matrix, AND the design-system
+inventory. A static page still has a design system. Under-extracting
+in Phase A is unrecoverable - no later node can invent what was
+never captured.
+
+
+--------------------------------------------------------------------
+STEP 4 - PREFLIGHT (before anything is read or built)
+--------------------------------------------------------------------
+
+4.1  Graphify and MSW WARN, never abort. If no graphify-out/ index
+     exists (a token optimization) or msw is missing (the mock branch),
+     the run records it, offers to build/install (e.g. npm i -D msw),
+     and PROCEEDS. A missing backend or optimization never aborts a
+     frontend run. The engine never edits package.json itself.
+
+4.2  The ONE tooling STOP is unmeasurable UI. Browser capture is
+     required for the design-truth gate: if chrome-devtools is
+     unreachable, or a Figma intake has no FIGMA_API_KEY, the run STOPS
+     - you cannot honestly measure UI/UX fidelity without rendering the
+     real page. Everything else warns and continues.
+
+4.3  doc-writer reads .claude/team-notes.md and folds the relevant
+     notes into the planner's context, so past conventions actually
+     shape the plan.
+
+4.4  If the run is resuming after an interruption, it re-enters at
+     last_node / next in run-state.json. It does NOT restart Phase A.
+     EXCEPTION: design captures are session knowledge, not files - if
+     a cold resume no longer holds them, design-fetcher re-runs and
+     re-renders the source live. It never reads saved screenshots.
+
+
+--------------------------------------------------------------------
+STEP 5 - PHASE A : understand (read-only, runs in parallel)
+--------------------------------------------------------------------
+
+5.0  All legacy reads are scoped to legacy_source.path (STEP 1.4).
+     The orchestrator pastes it into every legacy-reading node.
+
+5.1  Three agents fan out at the same time:
+
+        discovery          - where it lands in the repo, what to reuse,
+                             existing routes + ingress allowlist entries
+        legacy-decompiler  - the legacy spec, AS A SENIOR PM, PLUS the
+                             FUNCTIONALITY INVENTORY
+        design-fetcher     - the DESIGN-TRUTH CAPTURE + the
+                             DESIGN-SYSTEM INVENTORY
+
+5.2  THREE FROZEN ARTIFACTS come out of Phase A. All three are
+     required before any code is written:
+
+     (a) design_capture + interactive_state_matrix
+         A RENDERED capture - never a read of .tpl/markup:
+           - all three breakpoints rendered (mobile, tablet, desktop)
+           - per-element computed styles across the FULL property set:
+             color, background/gradients, opacity, font-family/size/
+             weight, LINE-HEIGHT, LETTER-SPACING, text-align, per-side
+             PADDING and MARGIN, width/height, display/flex/grid/gap,
+             border widths+colors+radius, BOX-SHADOW, direction/RTL,
+             and ICON stroke-width + rendered size
+           - every state each element can be in: default, hover, focus,
+             active, expanded, collapsed, empty, loading, error,
+             disabled, RTL - at each breakpoint
+
+         WHY THE FULL PROPERTY SET: a property that is never captured
+         is one the verifier can never diff and the synthesizer will
+         guess. Missing line-height / letter-spacing / per-side padding
+         / box-shadow / icon weight is exactly what reads as "close
+         but wrong" and caps fidelity below 98%.
+
+         THESE ARE SESSION KNOWLEDGE, NOT REPO FILES. Screenshots and
+         the raw style dump are NOT written to docs/migrations/<id>/
+         design/. design-fetcher returns the facts as text; the
+         orchestrator holds them in context and pastes them into the
+         planner / build / verify prompts. run-state stores only
+         compact proof: rendered, breakpoints, properties_captured.
+
+     (a2) route_feature_spec - the route's PURPOSE (what the feature
+         is for) and its ranked CORE FUNCTIONALITIES (what it does),
+         extracted by legacy-decompiler from legacy_source.path. This
+         is the point of giving the old-repo route: you get specs
+         about the feature. Every core functionality must survive into
+         the migrated route; a dropped one is a failed migration. It
+         is shown at the PLAN GATE and reconciled at N13.
+
+     (b) functionality_inventory
+         EVERY link (with target + whether it is a frontend-route, a
+         legacy-path, or external), control, matrix state, form,
+         endpoint, analytics event, and SEO head affordance. Each gets
+         a stable id and a status. If the page has 5 cards and 566
+         links, the inventory has 5 cards and 566 links - never "and
+         similar", never a sample. Silent narrowing is FORBIDDEN; a
+         dropped item requires an explicit human waiver + reason.
+
+     (c) design_system_inventory
+         For EVERY visual primitive: the legacy widget, the repo
+         primitive it maps to (REUSE FIRST - src/components, the
+         @theme tokens in src/styles.css, cva variants), the tokens
+         its captured values resolve to, and which states it must be
+         verified in. Produced on EVERY run, including "static" ones.
+
+5.3  Then pattern-mapper writes the Component Blueprint (props, DS
+     imports, the triad to reuse or create, and the mapping-fidelity
+     checklist - the legacy->new mapping is NOT 1:1 and each mapped
+     primitive is verified per state, never assumed).
+
+     pattern-mapper also emits DESIGN_SYSTEM_ADDITIONS - see STEP 6.
+
+5.4  SHARED MODULES - migrate once, reuse everywhere (extract-once
+     registry). Legacy forasna reuses code across pages: a model, a
+     service, a jQuery util, a .tpl partial, a validation rule. Each
+     is migrated ONCE and imported, never re-migrated per page.
+
+       - legacy-decompiler FLAGS candidates by WHERE they are defined
+         (a common/shared/lib or entity/model legacy dir, outside this
+         run's legacy_source.path) - no repo-wide grep. It queries
+         graphify-out/ for the real consumer list if present; used_by
+         is best-effort otherwise. The >=2-consumer bar is a
+         confirmation target, not a precondition to flag.
+
+       - The orchestrator RECONCILES across ALL runs' run-state
+         shared_modules for the same symbol:
+           * already migrated by an earlier run -> CONTRACT-CHECK that
+             its frontend_home exposes what THIS consumer needs, then
+             IMPORT it (no rebuild). If it lacks a field this consumer
+             needs -> PARTIAL MIGRATION: EXTEND the shared home in
+             place (add the field/method) and re-run the shared
+             module's tests + every earlier consumer's tests. Never
+             fork a second copy.
+           * another LIVE run is migrating it -> STOP to a human
+             decision (cross-run lock), like locked_paths.
+           * nobody owns it -> this run claims it, stamps its
+             legacy_sha256, and pattern-mapper picks the frontend_home
+             in an EXISTING repo home: a shared src/api/<domain> triad
+             + a src/types type for a model, src/components/shared for
+             a partial, src/hooks/use-* or src/lib for logic, a
+             src/forms/schemas Zod schema for validation, src/constants
+             for a constant. Named per files-and-folders-naming-rules.
+
+       - DRIFT: if a migrated shared symbol's live hash != its stored
+         legacy_sha256, status -> drifted: re-open the shared module's
+         Phase C AND flag every used_by consumer as blast radius at
+         N13. A shared-logic change never lands silently across pages.
+
+       - A shared module is ITS OWN PLAN PHASE, sequenced BEFORE the
+         phases that consume it. code-reviewer treats a re-migrated or
+         FORKED shared module as a BLOCKING finding.
+
+5.6  ONE CLARIFICATION ROUND - ASK EVERYTHING NOW, BEFORE PLANNING.
+
+     Phase A is where unknowns surface, so they are resolved HERE -
+     never mid-build and never one question at a time. The skill
+     collects every open item into a single list:
+
+       - every "unknown" the decompiler marked
+       - every pattern-mapper question (which primitive, reuse vs
+         promote, a mapping with no obvious equivalent)
+       - a declared case that diverges from the detected signals
+       - every ambiguity in the ACs or the frozen scope
+       - anything where two readings mean materially different work
+
+     It PROBES FIRST (greps the legacy path, checks the repo, tries
+     the endpoint) so only genuine human decisions reach you - then
+     asks them ALL AT ONCE, each with a recommended default and the
+     consequence of each choice. Answers land in open_questions.
+
+     The planner does NOT start while a blocking unknown is open. A
+     cheap-to-reverse unknown becomes an explicit assumption written
+     into the plan, so you see it at the PLAN GATE.
+
+5.7  Then planner writes PLAN.md: the smallest independently
+     buildable+testable phases, every inventory item mapped to a
+     phase or an acceptance check, each phase carrying its own
+     build->coverage->gate loop and its four-axis exit condition.
+
+5.8  GATE A refuses to seal unless ALL hold:
+       - design_capture.rendered == true
+       - all three breakpoints rendered
+       - the full property set captured
+       - the matrix covers every reachable state
+       - the functionality inventory is complete
+       - design_system_inventory exists
+     A partial capture is a STOP, never a "good enough" baseline.
+
+
+--------------------------------------------------------------------
+STEP 6 - THE PLAN GATE  (HUMAN STOP - new)
+--------------------------------------------------------------------
+
+After the planner returns, the skill PRESENTS THE PLAN IN CHAT and
+STOPS. Phase B cannot start until you approve. This is enforced by
+the schema: a run-state at phase B/C/Devops without
+gates.plan = "approved" is SCHEMA-INVALID.
+
+6.1  What you are shown:
+
+     * THE PHASES, SPLIT INTO TASKS. For each phase:
+         - GOAL           what this phase must achieve, tied to its
+                          purpose (not just "build the thing")
+         - TASKS          the ordered, concrete steps
+         - AGENTIC LOOP   its build -> coverage -> gate cycle, which
+                          nodes run, and the cap (back-edges 3 -> N13)
+         - EXIT           the four-axis condition for that slice
+
+     * DESIGN-SYSTEM REUSE - the already-implemented components,
+       @theme tokens, colors, fonts and cva variants the plan will
+       REUSE. Reuse-first is mandatory; proposing to build something
+       that already exists is a blocking finding.
+
+     * DESIGN-SYSTEM ADDITIONS - everything the source needs that the
+       design system does NOT have yet AND that will be used more than
+       once. These are not inlined as one-offs. Each is promoted to a
+       GLOBAL, with name + value + target file shown to you first:
+
+           colors    -> src/styles.css @theme, as a ramp/stop
+                        following the existing families
+                        (--color-R500, --color-N40, ... )
+           fonts     -> --font-*        in @theme
+           radii     -> --radius-*      in @theme
+           spacing   -> the theme scale
+           component -> a kebab-case shared component under
+                        src/components/shared
+
+       Named per .claude/rules/design-system.md plus the
+       files-and-folders-naming-rules skill. Added ONCE, then reused
+       everywhere.
+
+     * SHARED MODULES - which this run MIGRATES ONCE (its frontend
+       home + the phase that builds it, before its consumers) and
+       which it REUSES from an earlier run (with owning_run). You see
+       that no shared model/util gets duplicated.
+
+6.2  Then it asks you directly:
+     "continue, or add / consider / edit / remove anything?"
+
+       "continue" / "approved"
+            -> gates.plan = "approved", additions marked approved,
+               phase = "B", building starts.
+
+       "add / consider / edit / remove ..."
+            -> gates.plan = "changes", loops back to the planner with
+               your asks (planner inner cap 2), re-presents the plan.
+               phase stays at "A". No silent Phase B start.
+
+NOTE: because of this gate, an unattended run PARKS at the plan
+instead of building straight through. That is the intended trade.
+
+
+--------------------------------------------------------------------
+STEP 7 - PHASE B : build the UI (per plan phase, in dep order)
+--------------------------------------------------------------------
+
+Starts only after gates.plan = "approved". Counters reset to 0 at the
+start of EVERY plan phase - the cap of 3 is per-phase, not cumulative.
+
+7.1  react-synthesizer (the ONLY agent that writes code) builds this
+     phase's files. It builds to the CAPTURED NUMBERS, not to an
+     approximation: per-side padding/margin, colors, font-size/weight,
+     line-height, letter-spacing, gap, border/radius, box-shadow, and
+     icon size + stroke-width (a Lucide icon must be tuned to the
+     source glyph's weight - the default stroke is rarely right).
+
+     If an APPROVED design-system addition covers a value it needs, it
+     ADDS THE GLOBAL FIRST (to src/styles.css @theme or
+     src/components/shared, named as approved) and THEN references it.
+     It may never invent a global that was not approved at the plan
+     gate, and never inline the same raw hex across components.
+
+     It builds EVERY state in the matrix, not just the default.
+
+     The dev server is started ONCE here; its URL goes into run-state
+     as dev_url and is passed to every browser node (they have no Bash
+     and cannot start their own).
+
+7.2  Coverage nodes then run IN PARALLEL:
+
+     visual-verifier   THE DESIGN-COMPARISON GATE. Renders BOTH sides
+                       live - Side A = the design source (Figma node
+                       via Figma MCP, else the production/legacy URL
+                       navigated live), Side B = the implementation at
+                       dev_url - and diffs them per element x state x
+                       breakpoint, RTL included. Icon weight, per-side
+                       padding/margin, colors, line-heights and
+                       spacing are EXPLICITLY diffed properties;
+                       "looks close" is never a verdict. The diff
+                       table is returned INLINE in its report, not
+                       written to the repo.
+
+                       A report with both_sides_rendered = false is
+                       REJECTED and re-dispatched. It is not a score.
+                       Scoring against a stored manifest would hide
+                       drift between what was captured and what the
+                       source looks like now.
+
+     code-reviewer     Scores TWO axes separately: CODE LOGIC and
+                       CODE STRUCTURE. Runs the naming-rules skill
+                       over every new/renamed file (any violation is
+                       BLOCKING). Also blocks on design-system
+                       violations: a raw value repeated across files
+                       instead of promoted to a global, or a global
+                       that was never approved at the plan gate.
+
+     a11y-auditor      keyboard, roles/names, contrast, RTL - across
+                       every matrix state, not just the default.
+
+     security-auditor  secrets, auth/JWT, XSS, SSR leak, validation,
+                       and that no mock ships to production.
+
+7.3  PHASE EXIT requires all of:
+       - tests green, eslint + tsc clean
+       - UI/UX >= 0.98 with EVERY state x breakpoint exercised
+         (an unexercised state is an automatic FAIL, not an omission)
+       - code-logic branches covered
+       - code-structure >= 0.98 with zero naming violations
+       - every SEO inventory item in the slice satisfied
+
+     Any FAIL routes back to react-synthesizer with the specific
+     findings and increments that counter. At 3 -> N13.
+
+
+--------------------------------------------------------------------
+STEP 8 - PHASE C : wire the data (per endpoint)
+--------------------------------------------------------------------
+
+8.1  pattern-mapper plans the DTO -> view-model mapping.
+
+8.2  react-synthesizer writes the src/api/<domain> triad + hooks and
+     does the ONE-LINE container swap. The presenter is not touched.
+
+8.3  qa-tester + integration-tester + security-auditor run.
+     qa-tester writes a test case per inventory item and per matrix
+     state AND drives the real page in the browser - clicking every
+     control, submitting every form, following every link. A green
+     unit suite with an undriven UI is NOT a pass.
+
+     Every analytics inventory item gets a track() parity assertion.
+
+8.4  A MISSING ENDPOINT NEVER ABORTS. The shape is inferred from the
+     legacy jQuery success handler, stood up as an MSW mock LABELLED
+     "inferred", the page is built against it, the endpoint is marked
+     "mocked", and a row goes into backend-asks.md. Every mock is
+     re-raised at N13. An endpoint that was only ever mocked is never
+     marked "wired".
+
+
+--------------------------------------------------------------------
+STEP 9 - ROUTE & NAVIGATION INTEGRITY  (before devops)
+--------------------------------------------------------------------
+
+integration-tester takes EVERY href in the inventory and, per
+environment (localhost, testing, production), records: does it
+resolve, is it a frontend route or a legacy path (classified against
+src/routes/ and the ingress allowlists), does it behave correctly.
+
+STRANGLER-FIG RULE: deployed builds keep cross-app links RELATIVE so
+they follow the current origin. Only local dev may prefix a legacy
+path to a reachable origin. Never pin a cross-env link to an env var
+that is absent from the helm values.
+
+SAME PASS - ROUTE COMPLETENESS: every in-scope legacy route must have
+a matching frontend route, in the CORRECT route group (_private /
+_guest / _public matching the legacy auth posture - a $_SESSION page
+maps to _private, never a client-only hide), with head-metadata
+parity. Missing, mis-grouped, or without head parity blocks N13.
+
+
+--------------------------------------------------------------------
+STEP 10 - DEVOPS CUTOVER  (BOTH environments, part of "done")
+--------------------------------------------------------------------
+
+devops-env-swapper appends the route regex to BOTH values files in
+the SAME diff:
+
+     testing-values.yaml     APPLIED now, reachable for validation
+     production-values.yaml  PREPARED in the same diff, its own
+                             commit, marked "apply on human sign-off
+                             AND with/after the production deploy"
+
+Editing only testing is INCOMPLETE. The gate lists any environment
+still missing the route as an OPEN BLOCKER.
+
+ORDERING GUARDRAIL: the prod path goes live only WITH or AFTER the
+code deploy - never before, or the URL 404/500s into a split-brain.
+
+ROLLBACK: revert the code PR AND remove the path block from BOTH
+values files, then redeploy.
+
+
+--------------------------------------------------------------------
+STEP 11 - N13 HUMAN GATE  (the final stop)
+--------------------------------------------------------------------
+
+The run STOPS and presents an honest ledger, every claim backed by a
+real tool artifact:
+
+  * The functionality inventory, each item DONE or WAIVED. The gate
+    REFUSES to close while any item is neither.
+  * The FOUR axis scores, shown separately and NEVER averaged, each
+    with its evidence and the >=98% bar.
+  * The design-comparison record: which source was rendered, PROOF
+    both sides were rendered, and the per-property diff.
+  * Interactive-state coverage - every state x breakpoint, each result.
+  * Route integrity per environment + route completeness.
+  * Every mocked endpoint, with a direct re-ask: has the real endpoint
+    landed? If yes -> MSW off, re-run the DTO check, mark wired,
+    re-run affected coverage. If no -> you explicitly acknowledge the
+    page ships on mock data.
+  * The devops paths per environment; any env still missing is an
+    open blocker.
+  * Shared modules - each migrated to ONE home (or reused from an
+    earlier run). Any still candidate/migrating/drifted is an open
+    blocker, and the blast radius of any drifted/extended one is shown.
+
+Your options:
+
+     approved        -> production cutover marked ready; the engine is
+                        DONE at phase = "Devops". YOU do all the git.
+     changes: ...    -> loops back to react-synthesizer. Cap 2 here,
+                        then the run is Parked or Descoped.
+     reject          -> Parked. The working tree is left alone.
+     (out of scope)  -> becomes a NEW run (Descoped); the in-slice
+                        work still ships.
+
+
+--------------------------------------------------------------------
+THE RULES THAT KEEP IT HONEST
+--------------------------------------------------------------------
+
+*  SINGLE WRITER. Only react-synthesizer edits code. Before it runs,
+   the orchestrator claims its files in locked_paths and checks other
+   live runs for overlap - two runs never write the same file at once.
+
+*  CAPS. Back-edges cap at 3 PER PLAN PHASE (counters reset each phase,
+   they do not accumulate). Inner loops cap at 2. The human gate has its
+   own cap of 2. Hitting any cap escalates to you - never a silent
+   extra attempt.
+
+*  COVERAGE AGENTS REPORT AND EXIT. An audit never retries toward a
+   PASS. A FAIL that becomes a PASS inside one invocation is rejected.
+
+*  NO FABRICATED METRICS. Any ">=98% / secure / fast / works" claim
+   without a real tool result behind it is rejected. "Looks good /
+   should work" is rejected on sight. A dimension a node could not
+   actually measure is reported as UNMEASURED, never as a pass.
+
+*  NO ESCAPE HATCH. There is no "simple / static / small / cost" path
+   that skips design capture, the inventory, the design-comparison
+   gate, any coverage node, route-integrity, or the four-axis bar.
+   Cost discipline may lower a MODEL TIER and nothing else.
+
+*  LEGACY ../forasna IS READ-ONLY. Every node, always. And every
+   legacy read is SCOPED to legacy_source.path - widening requires a
+   proven shared dependency, recorded in out_of_scope_reads. No
+   repo-wide legacy sweeps.
+
+*  SCOPE IS FROZEN AT INTAKE. A new ask becomes a new run.
+
+*  THE ENGINE NEVER RUNS GIT. No branch, commit, push, or PR - from
+   any node or the orchestrator.
+
+
+--------------------------------------------------------------------
+WHAT THE SCHEMA ENFORCES (not just prose)
+--------------------------------------------------------------------
+
+run-state.schema.json has five conditional rules. A run-state that
+breaks one is SCHEMA-INVALID and passes no gate:
+
+  1. Any phase past Intake      -> must carry design_source, frozen
+                                   acceptance_criteria, and target.
+  2. gates.A = "sealed"         -> must carry design_capture,
+                                   interactive_state_matrix,
+                                   functionality_inventory, and
+                                   design_system_inventory.
+  3. gates.B = "passed"         -> must carry design_comparison.
+  4. phase B/C/Devops           -> must have gates.plan = "approved".
+  5. phase Devops               -> must carry route_integrity,
+                                   route_completeness, devops_cutover.
+
+Plus: design_capture.rendered must literally be true (const), and at
+least three breakpoints must be recorded.
+
+Validate a run-state with:
+
+  npx ajv-cli@5 validate --spec=draft7 --strict=false \
+    -s .claude/skills/migrate-feature/run-state.schema.json \
+    -d docs/migrations/<id>/run-state.json
+
+
+--------------------------------------------------------------------
+WHERE THINGS LIVE
+--------------------------------------------------------------------
+
+.claude/skills/migrate-feature/skill.md        the orchestrator procedure
+.claude/skills/migrate-feature/intake-workflow.md  the intake, run by reading
+.claude/skills/migrate-feature/run-state.schema.json
+.claude/skills/migrate-feature/migration-plan.md   full design rationale
+                                               (incl. the incidents behind
+                                                each gate, section 6b)
+.claude/skills/case1..case6/                   per-case playbooks
+.claude/agents/*.md                            the 14 nodes
+.claude/rules/*.md                             architecture, data-access,
+                                               design-system, legacy-forasna,
+                                               git-workflow, devops-routing,
+                                               token-economy, effort-policy
+.claude/scripts/sync-skill-files.mjs           SKILL.md symlink generator
+src/styles.css                                 the @theme design tokens
+docs/migrations/<id>/run-state.json            per-run state
+docs/migrations/<id>/backend-asks.md           endpoint hand-off list
+
+For a one-line change, do not spin the graph - invoke a single agent
+directly.
